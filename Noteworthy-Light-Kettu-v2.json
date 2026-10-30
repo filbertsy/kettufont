@@ -1,0 +1,25 @@
+{
+  "spec": 1,
+  "name": "Noteworthy Light",
+  "previewText": "Noteworthy Light \u2014 The quick brown fox jumps over the lazy dog",
+  "main": {
+    "ABCGintoNord-ExtraBold": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "ggsans-Bold": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "ggsans-BoldItalic": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "ggsans-ExtraBold": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "ggsans-ExtraBoldItalic": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "ggsans-Medium": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "ggsans-MediumItalic": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "ggsans-Normal": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "ggsans-NormalItalic": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "ggsans-Semibold": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "ggsans-SemiboldItalic": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "NotoSans-Bold": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "NotoSans-ExtraBold": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "NotoSans-Medium": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "NotoSans-Normal": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "NotoSans-NormalItalic": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "NotoSans-Semibold": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE",
+    "SourceCodePro-Semibold": "PASTE_YOUR_PUBLIC_RAW_TTF_URL_HERE"
+  }
+}
