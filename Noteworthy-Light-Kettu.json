@@ -1,0 +1,25 @@
+{
+  "spec": 1,
+  "name": "Noteworthy Light",
+  "previewText": "The Quick Brown Fox Jumps Over The Lazy Dog",
+  "main": {
+    "ABCGintoNord-ExtraBold": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggsans-Bold": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggsans-BoldItalic": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggsans-ExtraBold": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggsans-ExtraBoldItalic": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggsans-Medium": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggsans-MediumItalic": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggsans-Normal": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggsans-NormalItalic": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggsans-Semibold": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggsans-SemiboldItalic": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "NotoSans-Bold": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "NotoSans-ExtraBold": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "NotoSans-Medium": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "NotoSans-Normal": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "NotoSans-NormalItalic": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "NotoSans-Semibold": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf",
+    "ggmono-Normal": "https://github.com/hbeyri/m_play/raw/refs/heads/master/src/m_play/gnovel/static/gnovel/res/font/Noteworthy%20Light.ttf"
+  }
+}
