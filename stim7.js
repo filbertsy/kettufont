@@ -2,61 +2,90 @@
 (() => {
 'use strict';
 
-/* STIMULATION OVERDRIVE X */
+/* STIMULATION OVERDRIVE X.3 */
 
-if (window.__STIM_X__) {
-    window.__STIM_X__.toggle();
+const VERSION = 'X.3';
+const STORAGE = 'stim_overdrive_x3';
+const OLD = window.__STIM_X3__;
+
+if (OLD) {
+    OLD.toggle();
     return;
 }
 
-const VERSION = 'X.1';
-const STORAGE = 'stim_overdrive_x_settings';
+document.getElementById('od3')?.remove();
+document.getElementById('od3-style')?.remove();
+
+const $ = (s, r = document) => r.querySelector(s);
+const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
+const fmt = n => {
+    if (!Number.isFinite(Number(n))) return String(n);
+    return Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+};
+
+let stored = {};
+try {
+    stored = JSON.parse(localStorage.getItem(STORAGE) || '{}');
+} catch {}
 
 const S = {
-    game: null,
-    multiplier: 1,
-    passiveRate: 100,
-    clickRate: 10,
-    auto: {},
-    upgrades: {},
-    hue: 0,
-    tab: 'Dashboard',
+    tab: 'HOME',
     search: '',
-    minimized: false,
-    started: Date.now(),
+    category: 'ALL',
+    page: 0,
+    hue: Number(stored.hue) || 0,
+    rgb: !!stored.rgb,
+    multiplier: Number(stored.multiplier) || 1,
+    passiveRate: Number(stored.passiveRate) || 100,
+    interval: clamp(Number(stored.interval) || 150, 50, 10000),
+    auto: stored.auto || {},
+    favorites: stored.favorites || [],
+    compact: !!stored.compact,
+    game: null,
+    visible: true,
+    destroyed: false,
+    timers: [],
+    rgbTimer: null,
     stats: {
         injected: 0,
         clicks: 0,
         collected: 0,
-        purchases: 0
+        actions: 0,
+        commands: 0
     },
-    timers: [],
-    rgb: false,
-    destroyed: false
+    history: [],
+    logs: [],
+    featurePageSize: 45,
+    commandPageSize: 35
 };
 
-const $ = (s, r = document) => r.querySelector(s);
-const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-
-function loadSettings() {
-    try {
-        const saved = JSON.parse(localStorage.getItem(STORAGE) || '{}');
-        Object.assign(S.auto, saved.auto || {});
-        Object.assign(S.upgrades, saved.upgrades || {});
-        if (Number.isFinite(saved.hue)) S.hue = saved.hue;
-        if (Number.isFinite(saved.multiplier)) S.multiplier = saved.multiplier;
-    } catch {}
-}
-
-function saveSettings() {
+function save() {
     try {
         localStorage.setItem(STORAGE, JSON.stringify({
-            auto: S.auto,
-            upgrades: S.upgrades,
             hue: S.hue,
-            multiplier: S.multiplier
+            rgb: S.rgb,
+            multiplier: S.multiplier,
+            passiveRate: S.passiveRate,
+            interval: S.interval,
+            auto: S.auto,
+            favorites: S.favorites,
+            compact: S.compact
         }));
-    } catch {}
+    } catch (e) {
+        console.warn('[OD3] Save failed', e);
+    }
+}
+
+function log(message, type = 'info') {
+    S.logs.unshift({
+        time: new Date().toLocaleTimeString(),
+        message: String(message),
+        type
+    });
+    S.logs.length = Math.min(S.logs.length, 100);
+
+    const status = $('#od3-status');
+    if (status) status.textContent = message;
 }
 
 function findGame() {
@@ -68,7 +97,6 @@ function findGame() {
         container.__vueParentComponent?.proxy,
         container.__vueParentComponent?.setupState
     ];
-
     const seen = new Set();
 
     while (queue.length) {
@@ -82,12 +110,16 @@ function findGame() {
             typeof obj.onMainClick === 'function'
         ) return obj;
 
-        if (obj.$children) queue.push(...obj.$children);
-        if (obj.$root && obj.$root !== obj) queue.push(obj.$root);
-        if (obj.$data) queue.push(obj.$data);
-        if (obj.setupState) queue.push(obj.setupState);
-        if (obj.proxy) queue.push(obj.proxy);
-        if (obj._vnode?.component?.proxy) queue.push(obj._vnode.component.proxy);
+        for (const child of [
+            obj.$children,
+            obj.$data ? [obj.$data] : [],
+            obj.setupState ? [obj.setupState] : [],
+            obj.proxy ? [obj.proxy] : [],
+            obj._vnode?.component?.proxy ? [obj._vnode.component.proxy] : []
+        ]) {
+            if (Array.isArray(child)) queue.push(...child);
+            else if (child) queue.push(child);
+        }
     }
 
     return null;
@@ -96,50 +128,53 @@ function findGame() {
 async function connect() {
     for (let i = 0; i < 40; i++) {
         S.game = findGame();
-        if (S.game) return true;
+        if (S.game) {
+            log('GAME CONNECTION ESTABLISHED', 'success');
+            return true;
+        }
         await new Promise(resolve => setTimeout(resolve, 250));
     }
+
+    log('GAME CONNECTION NOT FOUND', 'error');
     return false;
 }
 
-function getBalance() {
-    const g = S.game;
-    if (!g) return 0;
-
-    const value = Number(g.stimulation);
-    return Number.isFinite(value) ? value : 0;
+function balance() {
+    const n = Number(S.game?.stimulation);
+    return Number.isFinite(n) ? n : 0;
 }
 
-function inject(amount, useMultiplier = true) {
-    const g = S.game;
-    if (!g || !Number.isFinite(amount) || amount <= 0) return false;
+function inject(amount, applyMultiplier = true) {
+    amount = Number(amount);
+    if (!S.game || !Number.isFinite(amount) || amount <= 0) return false;
 
-    const finalAmount = amount * (useMultiplier ? S.multiplier : 1);
+    const value = amount * (applyMultiplier ? S.multiplier : 1);
+    if (!Number.isFinite(value)) return false;
 
     try {
-        if (typeof g.addStimulation === 'function') {
-            g.addStimulation(finalAmount);
-        } else if (typeof g.stimulation === 'number') {
-            g.stimulation += finalAmount;
+        if (typeof S.game.addStimulation === 'function') {
+            S.game.addStimulation(value);
+        } else if (typeof S.game.stimulation === 'number') {
+            S.game.stimulation += value;
         } else {
             return false;
         }
 
-        S.stats.injected += finalAmount;
+        S.stats.injected += value;
+        S.stats.actions++;
         return true;
-    } catch (error) {
-        console.error('[Stim X]', error);
+    } catch (e) {
+        log('INJECTION ERROR: ' + e.message, 'error');
         return false;
     }
 }
 
-function mainClick() {
-    const g = S.game;
-
+function clickMain() {
     try {
-        if (typeof g?.onMainClick === 'function') {
-            g.onMainClick();
+        if (typeof S.game?.onMainClick === 'function') {
+            S.game.onMainClick();
             S.stats.clicks++;
+            S.stats.actions++;
             return true;
         }
 
@@ -150,16 +185,17 @@ function mainClick() {
         if (button) {
             button.click();
             S.stats.clicks++;
+            S.stats.actions++;
             return true;
         }
-    } catch (error) {
-        console.error('[Stim X]', error);
+    } catch (e) {
+        log(e.message, 'error');
     }
 
     return false;
 }
 
-const selectors = {
+const SELECTORS = {
     rewards: '.reward .collect',
     press: '.hydraulic-press .press-collect:not(.press-collect-hide)',
     lootboxes: '.loot-box-target',
@@ -167,844 +203,1217 @@ const selectors = {
     quiz: '.question-choice',
     notifications: '.inbox .close',
     inbox: '.inbox .action',
-    stocksBuy: '.stock-buy:not([disabled])',
-    stocksSell: '.stock-sell:not([disabled])',
-    tamagotchi: '.egg',
-    feed: 'button'
+    buy: '.stock-buy:not([disabled])',
+    sell: '.stock-sell:not([disabled])',
+    eggs: '.egg'
 };
 
-function clickSelector(selector, limit = 20) {
+function clickElements(selector, limit = 20) {
     let count = 0;
 
-    try {
-        for (const el of $$(selector)) {
-            if (count >= limit) break;
-            if (el.offsetParent === null || el.disabled) continue;
+    for (const el of $$(selector)) {
+        if (count >= limit) break;
+        if (!el || el.disabled || el.offsetParent === null) continue;
+
+        try {
             el.click();
             count++;
-        }
-    } catch (error) {
-        console.error('[Stim X]', error);
+        } catch {}
     }
 
     S.stats.collected += count;
+    S.stats.actions += count;
     return count;
 }
 
-function collectEverything() {
-    let total = 0;
+function clickText(text) {
+    const el = $$('button').find(b =>
+        b.textContent.trim().toLowerCase() === text.toLowerCase() &&
+        !b.disabled && b.offsetParent !== null
+    );
 
-    for (const selector of [
-        selectors.rewards,
-        selectors.press,
-        selectors.lootboxes,
-        selectors.powerups
-    ]) {
-        total += clickSelector(selector, 10);
-    }
-
-    return total;
+    if (!el) return false;
+    el.click();
+    S.stats.actions++;
+    return true;
 }
 
-/* FEATURE REGISTRY */
+function collectAll() {
+    return Object.values(SELECTORS).reduce(
+        (total, selector) => total + clickElements(selector, 15),
+        0
+    );
+}
 
-const FEATURES = [
-    {
-        category: 'Stimulation',
-        name: 'Custom Injection',
-        description: 'Inject a custom amount.',
-        type: 'action',
-        run: () => {
-            const amount = Number(prompt('Stimulation amount:', '1000000'));
-            if (Number.isFinite(amount) && amount > 0) {
-                notify(inject(amount) ? 'Injection successful.' : 'Injection failed.');
-            }
-        }
-    },
-    {
-        category: 'Stimulation',
-        name: 'Add 1 Thousand',
-        type: 'action',
-        run: () => inject(1e3)
-    },
-    {
-        category: 'Stimulation',
-        name: 'Add 1 Million',
-        type: 'action',
-        run: () => inject(1e6)
-    },
-    {
-        category: 'Stimulation',
-        name: 'Add 1 Billion',
-        type: 'action',
-        run: () => inject(1e9)
-    },
-    {
-        category: 'Stimulation',
-        name: 'Add 1 Trillion',
-        type: 'action',
-        run: () => inject(1e12)
-    },
-    {
-        category: 'Stimulation',
-        name: 'Add 1 Quadrillion',
-        type: 'action',
-        run: () => inject(1e15)
-    },
-    {
-        category: 'Stimulation',
-        name: 'Add Maximum Safe Integer',
-        type: 'action',
-        run: () => inject(Number.MAX_SAFE_INTEGER)
-    },
-    {
-        category: 'Stimulation',
-        name: 'Set Multiplier',
-        type: 'action',
-        run: () => {
-            const n = Number(prompt('New multiplier:', String(S.multiplier)));
-            if (Number.isFinite(n) && n > 0) {
-                S.multiplier = n;
-                saveSettings();
-                refresh();
-            }
-        }
-    },
-    {
-        category: 'Stimulation',
-        name: 'Reset Multiplier',
-        type: 'action',
-        run: () => {
-            S.multiplier = 1;
-            saveSettings();
-            refresh();
-        }
-    },
-    {
-        category: 'Stimulation',
-        name: 'Multiply ×10',
-        type: 'action',
-        run: () => {
-            S.multiplier *= 10;
-            saveSettings();
-            refresh();
-        }
-    },
-    {
-        category: 'Stimulation',
-        name: 'Multiply ×100',
-        type: 'action',
-        run: () => {
-            S.multiplier *= 100;
-            saveSettings();
-            refresh();
-        }
-    },
-    {
-        category: 'Stimulation',
-        name: 'Multiply ×1000',
-        type: 'action',
-        run: () => {
-            S.multiplier *= 1000;
-            saveSettings();
-            refresh();
-        }
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Main Click',
-        type: 'toggle',
-        run: () => mainClick()
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Rewards',
-        type: 'toggle',
-        run: () => clickSelector(selectors.rewards)
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Hydraulic Press',
-        type: 'toggle',
-        run: () => clickSelector(selectors.press)
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Lootboxes',
-        type: 'toggle',
-        run: () => clickSelector(selectors.lootboxes)
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Powerups',
-        type: 'toggle',
-        run: () => clickSelector(selectors.powerups)
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Quiz',
-        type: 'toggle',
-        run: () => clickSelector(selectors.quiz, 1)
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Notifications',
-        type: 'toggle',
-        run: () => clickSelector(selectors.notifications)
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Inbox Actions',
-        type: 'toggle',
-        run: () => clickSelector(selectors.inbox)
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Stock Buying',
-        type: 'toggle',
-        run: () => clickSelector(selectors.stocksBuy, 1)
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Stock Selling',
-        type: 'toggle',
-        run: () => clickSelector(selectors.stocksSell, 1)
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Feed',
-        type: 'toggle',
-        run: () => {
-            const feed = $$('button').find(b => b.textContent.trim() === 'Feed');
-            if (feed && feed.offsetParent !== null) feed.click();
-        }
-    },
-    {
-        category: 'Automation',
-        name: 'Auto Collect Everything',
-        type: 'toggle',
-        run: () => collectEverything()
-    },
-    {
-        category: 'Automation',
-        name: 'Passive Stimulation',
-        type: 'toggle',
-        run: () => inject(S.passiveRate / 10)
-    },
-    {
-        category: 'Automation',
-        name: 'Rapid Click Mode',
-        type: 'toggle',
-        run: () => mainClick()
-    },
-    {
-        category: 'Tools',
-        name: 'Inspect Game State',
-        type: 'action',
-        run: () => {
-            console.log('[Stim X] Game state:', S.game);
-            notify('Game state logged to console.');
-        }
-    },
-    {
-        category: 'Tools',
-        name: 'Reconnect Game',
-        type: 'action',
-        run: async () => notify(await connect() ? 'Connected.' : 'Game not found.')
-    },
-    {
-        category: 'Tools',
-        name: 'Copy Game Balance',
-        type: 'action',
-        run: () => {
-            const value = String(getBalance());
-            navigator.clipboard?.writeText(value);
-            notify('Balance: ' + value);
-        }
-    },
-    {
-        category: 'Tools',
-        name: 'Reset Session Statistics',
-        type: 'action',
-        run: () => {
-            S.stats = { injected: 0, clicks: 0, collected: 0, purchases: 0 };
-            notify('Statistics reset.');
-            refresh();
-        }
-    },
-    {
-        category: 'Tools',
-        name: 'Export Settings',
-        type: 'action',
-        run: () => {
-            const data = JSON.stringify({
-                auto: S.auto,
-                upgrades: S.upgrades,
-                hue: S.hue,
-                multiplier: S.multiplier
-            }, null, 2);
-
-            prompt('Copy your settings:', data);
-        }
-    },
-    {
-        category: 'Tools',
-        name: 'Import Settings',
-        type: 'action',
-        run: () => {
-            try {
-                const data = JSON.parse(prompt('Paste settings JSON:') || '{}');
-                Object.assign(S.auto, data.auto || {});
-                Object.assign(S.upgrades, data.upgrades || {});
-                if (Number.isFinite(data.hue)) S.hue = data.hue;
-                if (Number.isFinite(data.multiplier) && data.multiplier > 0) {
-                    S.multiplier = data.multiplier;
-                }
-                saveSettings();
-                refresh();
-                notify('Settings imported.');
-            } catch {
-                notify('Invalid settings JSON.');
-            }
-        }
-    },
-    {
-        category: 'Tools',
-        name: 'Reset All Settings',
-        type: 'action',
-        run: () => {
-            if (!confirm('Reset all Overdrive settings?')) return;
-            S.auto = {};
-            S.upgrades = {};
-            S.multiplier = 1;
-            S.passiveRate = 100;
-            S.clickRate = 10;
-            saveSettings();
-            refresh();
-        }
-    }
-];
-
-/* CUSTOM UPGRADE SHOP */
-
-const UPGRADES = [
-    { name: 'Click Amplifier', desc: 'Increase stimulation multiplier.', cost: 100, factor: 2 },
-    { name: 'Neural Network', desc: 'A stronger stimulation multiplier.', cost: 1000, factor: 5 },
-    { name: 'Quantum Processor', desc: 'Massively increase stimulation.', cost: 10000, factor: 10 },
-    { name: 'Reactor Core', desc: 'Increase passive stimulation.', cost: 5000, rate: 100 },
-    { name: 'Singularity Engine', desc: 'Major passive stimulation boost.', cost: 100000, rate: 10000 },
-    { name: 'Infinity Core', desc: 'Extreme passive stimulation boost.', cost: 100000000, rate: 1000000 }
-];
-
-function purchaseUpgrade(index) {
-    const u = UPGRADES[index];
-    if (!u || !S.game || typeof S.game.stimulation !== 'number') {
-        notify('Game balance cannot be edited.');
+function setMultiplier(value) {
+    value = Number(value);
+    if (!Number.isFinite(value) || value <= 0) {
+        log('INVALID MULTIPLIER', 'error');
         return;
     }
 
-    const level = S.upgrades[index] || 0;
-    const cost = Math.floor(u.cost * Math.pow(1.8, level));
-
-    if (getBalance() < cost) {
-        notify('Not enough stimulation.');
-        return;
-    }
-
-    S.game.stimulation -= cost;
-    S.upgrades[index] = level + 1;
-
-    if (u.factor) S.multiplier *= u.factor;
-    if (u.rate) S.passiveRate += u.rate;
-
-    S.stats.purchases++;
-    saveSettings();
-    notify(u.name + ' purchased.');
+    S.multiplier = clamp(value, 0.000001, 1e100);
+    save();
+    log('MULTIPLIER: ' + fmt(S.multiplier) + 'x', 'success');
     refresh();
 }
 
-/* INTERFACE */
+/* AUTOMATION REGISTRY */
 
-loadSettings();
+const AUTOMATIONS = [
+    ['Clicker', clickMain],
+    ['Reward Collector', () => clickElements(SELECTORS.rewards)],
+    ['Hydraulic Press', () => clickElements(SELECTORS.press)],
+    ['Lootbox Collector', () => clickElements(SELECTORS.lootboxes)],
+    ['Powerup Collector', () => clickElements(SELECTORS.powerups)],
+    ['Notification Cleaner', () => clickElements(SELECTORS.notifications)],
+    ['Inbox Actions', () => clickElements(SELECTORS.inbox)],
+    ['Stock Buyer', () => clickElements(SELECTORS.buy, 1)],
+    ['Stock Seller', () => clickElements(SELECTORS.sell, 1)],
+    ['Tamagotchi', () => clickElements(SELECTORS.eggs, 1)],
+    ['Feed', () => clickText('Feed')],
+    ['Collect All', collectAll],
+    ['Passive Injector', () => inject(S.passiveRate / 10)],
+    ['Rapid Clicker', clickMain]
+];
+
+function automationTick() {
+    if (!S.game || S.destroyed) return;
+
+    for (const [name, action] of AUTOMATIONS) {
+        if (!S.auto[name]) continue;
+
+        try {
+            action();
+        } catch (e) {
+            log(name + ': ' + e.message, 'error');
+        }
+    }
+}
+
+function setIntervalValue(value) {
+    value = Number(value);
+    if (!Number.isFinite(value) || value < 50 || value > 10000) {
+        log('INTERVAL RANGE: 50–10000 MS', 'error');
+        return;
+    }
+
+    S.interval = value;
+    clearInterval(S.automationTimer);
+    S.automationTimer = setInterval(automationTick, S.interval);
+    save();
+    log('AUTOMATION INTERVAL: ' + value + 'MS');
+}
+
+/* FEATURE DATABASE */
+
+const FEATURES = [];
+
+function addFeature(name, category, description, action, command) {
+    FEATURES.push({
+        id: FEATURES.length,
+        name,
+        category,
+        description,
+        action,
+        command
+    });
+}
+
+function addCommand(name, description, action, aliases = []) {
+    COMMANDS.push({
+        name,
+        description,
+        action,
+        aliases
+    });
+}
+
+const COMMANDS = [];
+
+function addInjectionPreset(index, amount) {
+    const name = 'inject.p' + String(index).padStart(4, '0');
+
+    addFeature(
+        'Injection Preset ' + index,
+        'STIM',
+        'Inject ' + fmt(amount) + ' stimulation.',
+        () => {
+            log(inject(amount) ? 'INJECTION COMPLETE' : 'INJECTION FAILED',
+                'success');
+            refresh();
+        },
+        name
+    );
+
+    addCommand(name, 'Inject ' + fmt(amount) + ' stimulation.', () => {
+        log(inject(amount) ? 'INJECTION COMPLETE' : 'INJECTION FAILED',
+            'success');
+    });
+}
+
+function addMultiplierPreset(index, multiplier) {
+    const name = 'mult.p' + String(index).padStart(4, '0');
+
+    addFeature(
+        'Multiplier Preset ' + index,
+        'MULTIPLIER',
+        'Set multiplier to ' + fmt(multiplier) + 'x.',
+        () => setMultiplier(multiplier),
+        name
+    );
+
+    addCommand(name, 'Set multiplier to ' + fmt(multiplier) + 'x.',
+        () => setMultiplier(multiplier));
+}
+
+function addRatePreset(index, rate) {
+    const name = 'rate.p' + String(index).padStart(4, '0');
+
+    addFeature(
+        'Passive Rate Preset ' + index,
+        'PASSIVE',
+        'Set passive rate to ' + fmt(rate) + '/s.',
+        () => {
+            S.passiveRate = rate;
+            save();
+            log('PASSIVE RATE UPDATED');
+            refresh();
+        },
+        name
+    );
+
+    addCommand(name, 'Set passive rate to ' + fmt(rate) + '/s.', () => {
+        S.passiveRate = rate;
+        save();
+        log('PASSIVE RATE UPDATED');
+    });
+}
+
+function addIntervalPreset(index, interval) {
+    const name = 'interval.p' + String(index).padStart(4, '0');
+
+    addFeature(
+        'Interval Preset ' + index,
+        'AUTOMATION',
+        'Set automation interval to ' + interval + 'ms.',
+        () => setIntervalValue(interval),
+        name
+    );
+
+    addCommand(name, 'Set automation interval to ' + interval + 'ms.',
+        () => setIntervalValue(interval));
+}
+
+/* 10,000 injection configurations */
+for (let i = 1; i <= 10000; i++) {
+    const exponent = Math.floor((i - 1) / 1000);
+    const base = (i - exponent * 1000) * 1000;
+    addInjectionPreset(i, base * Math.pow(10, exponent));
+}
+
+/* 10,000 multiplier configurations */
+for (let i = 1; i <= 10000; i++) {
+    addMultiplierPreset(i, i);
+}
+
+/* 1,000 passive-rate configurations */
+for (let i = 1; i <= 1000; i++) {
+    addRatePreset(i, i * 100);
+}
+
+/* 1,000 automation interval configurations */
+for (let i = 1; i <= 1000; i++) {
+    addIntervalPreset(i, 50 + (i - 1) * 10);
+}
+
+/* CORE FEATURES */
+
+const CORE = [
+    ['Custom Injection', 'STIM', 'Enter a custom amount.', () => {
+        const n = prompt('STIMULATION AMOUNT');
+        if (n !== null) log(inject(Number(n)) ? 'INJECTED' : 'INVALID AMOUNT');
+    }],
+    ['Inject Current Balance', 'STIM', 'Inject the current balance.', () => inject(balance())],
+    ['Inject 10x Balance', 'STIM', 'Inject ten times the current balance.', () => inject(balance() * 10)],
+    ['Inject 100x Balance', 'STIM', 'Inject one hundred times the current balance.', () => inject(balance() * 100)],
+    ['Set Multiplier', 'MULTIPLIER', 'Set a custom multiplier.', () => {
+        const n = prompt('MULTIPLIER', String(S.multiplier));
+        if (n !== null) setMultiplier(n);
+    }],
+    ['Double Multiplier', 'MULTIPLIER', 'Double the current multiplier.', () => setMultiplier(S.multiplier * 2)],
+    ['Multiply x10', 'MULTIPLIER', 'Multiply current multiplier by 10.', () => setMultiplier(S.multiplier * 10)],
+    ['Reset Multiplier', 'MULTIPLIER', 'Reset multiplier to 1x.', () => setMultiplier(1)],
+    ['Set Passive Rate', 'PASSIVE', 'Set custom passive rate.', () => {
+        const n = Number(prompt('PASSIVE RATE', String(S.passiveRate)));
+        if (Number.isFinite(n) && n >= 0) {
+            S.passiveRate = n;
+            save();
+            refresh();
+        }
+    }],
+    ['Set Automation Interval', 'AUTOMATION', 'Set the automation interval.', () => {
+        const n = prompt('INTERVAL IN MS', String(S.interval));
+        if (n !== null) setIntervalValue(n);
+    }],
+    ['Enable All Automation', 'AUTOMATION', 'Enable all automation modules.', () => {
+        AUTOMATIONS.forEach(([name]) => S.auto[name] = true);
+        save();
+        refresh();
+    }],
+    ['Disable All Automation', 'AUTOMATION', 'Disable all automation modules.', () => {
+        S.auto = {};
+        save();
+        refresh();
+    }],
+    ['Collect Everything', 'GAME', 'Collect visible game items.', () => {
+        log('COLLECTED ' + collectAll() + ' ITEMS');
+        refresh();
+    }],
+    ['Reconnect Game', 'SYSTEM', 'Reconnect to the game object.', connect],
+    ['Inspect Game', 'SYSTEM', 'Print the game object to console.', () => {
+        console.log('[OD3] Game object:', S.game);
+        log('GAME OBJECT PRINTED');
+    }],
+    ['Copy Balance', 'SYSTEM', 'Copy current balance.', async () => {
+        try {
+            await navigator.clipboard.writeText(String(balance()));
+            log('BALANCE COPIED');
+        } catch {
+            prompt('BALANCE', String(balance()));
+        }
+    }],
+    ['Reset Statistics', 'SYSTEM', 'Reset session statistics.', () => {
+        S.stats = { injected: 0, clicks: 0, collected: 0, actions: 0, commands: 0 };
+        log('STATISTICS RESET');
+        refresh();
+    }]
+];
+
+for (const [name, category, description, action] of CORE) {
+    const command = name.toLowerCase().replace(/[^a-z0-9]+/g, '.');
+    addFeature(name, category, description, action, command);
+    addCommand(command, description, action);
+}
+
+for (const [name, action] of AUTOMATIONS) {
+    const command = 'auto.' + name.toLowerCase().replace(/[^a-z0-9]+/g, '.');
+
+    addFeature(
+        'Automation: ' + name,
+        'AUTOMATION',
+        'Toggle ' + name + ' automation.',
+        () => {
+            S.auto[name] = !S.auto[name];
+            save();
+            log(name + (S.auto[name] ? ' ENABLED' : ' DISABLED'));
+            refresh();
+        },
+        command
+    );
+
+    addCommand(command, 'Toggle ' + name + ' automation.', () => {
+        S.auto[name] = !S.auto[name];
+        save();
+        log(name + (S.auto[name] ? ' ENABLED' : ' DISABLED'));
+    });
+}
+
+/* COMMAND ENGINE */
+
+function executeCommand(raw) {
+    raw = String(raw || '').trim();
+    if (!raw) return;
+
+    S.stats.commands++;
+    S.history.unshift(raw);
+    S.history.length = Math.min(S.history.length, 100);
+
+    const [first, ...rest] = raw.split(/\s+/);
+    const name = first.toLowerCase();
+    const args = rest;
+
+    const match = COMMANDS.find(c =>
+        c.name === name || c.aliases?.includes(name)
+    );
+
+    if (match) {
+        try {
+            const result = match.action(args);
+            if (result instanceof Promise) {
+                result.catch(e => log(e.message, 'error'));
+            }
+        } catch (e) {
+            log('COMMAND ERROR: ' + e.message, 'error');
+        }
+        return;
+    }
+
+    switch (name) {
+        case 'help':
+            log('help, list, search, inject, mult, rate, interval, click, collect, auto, balance, stats, theme, hide, reconnect, clear');
+            break;
+
+        case 'list':
+            log('COMMAND COUNT: ' + COMMANDS.length);
+            break;
+
+        case 'search':
+            S.search = args.join(' ');
+            S.tab = 'FEATURES';
+            S.page = 0;
+            refresh();
+            break;
+
+        case 'inject':
+            log(inject(Number(args[0])) ? 'INJECTION COMPLETE' : 'INJECTION FAILED');
+            break;
+
+        case 'mult':
+        case 'multiplier':
+            setMultiplier(args[0]);
+            break;
+
+        case 'rate':
+            S.passiveRate = Math.max(0, Number(args[0]) || 0);
+            save();
+            log('PASSIVE RATE UPDATED');
+            break;
+
+        case 'interval':
+            setIntervalValue(args[0]);
+            break;
+
+        case 'click':
+            log(clickMain() ? 'CLICK EXECUTED' : 'CLICK FAILED');
+            break;
+
+        case 'collect':
+            log('COLLECTED ' + collectAll() + ' ITEMS');
+            break;
+
+        case 'auto':
+            if (args[0] === 'on') {
+                AUTOMATIONS.forEach(([n]) => S.auto[n] = true);
+                log('ALL AUTOMATIONS ENABLED');
+            } else if (args[0] === 'off') {
+                S.auto = {};
+                log('ALL AUTOMATIONS DISABLED');
+            } else {
+                const target = AUTOMATIONS.find(([n]) =>
+                    n.toLowerCase() === args.join(' ').toLowerCase()
+                );
+                if (target) {
+                    S.auto[target[0]] = !S.auto[target[0]];
+                    log(target[0] + ': ' + (S.auto[target[0]] ? 'ON' : 'OFF'));
+                } else {
+                    log('USAGE: auto on/off/name');
+                }
+            }
+            save();
+            break;
+
+        case 'balance':
+            log('BALANCE: ' + fmt(balance()));
+            break;
+
+        case 'stats':
+            log(JSON.stringify(S.stats));
+            break;
+
+        case 'theme':
+            S.hue = clamp(Number(args[0]) || 0, 0, 360);
+            applyHue();
+            save();
+            log('THEME UPDATED');
+            break;
+
+        case 'hide':
+            toggle();
+            break;
+
+        case 'reconnect':
+            connect();
+            break;
+
+        case 'clear':
+            S.logs = [];
+            log('TERMINAL CLEARED');
+            break;
+
+        default:
+            log('UNKNOWN COMMAND: ' + name, 'error');
+    }
+}
+
+/* MOBILE INTERFACE */
 
 const style = document.createElement('style');
+style.id = 'od3-style';
 style.textContent = `
-#stimx {
- --hue:${S.hue};
- position:fixed;z-index:2147483647;top:16px;right:16px;
- width:370px;max-height:88vh;overflow:auto;
- padding:14px;background:#101014;color:#eee;
- border:1px solid hsl(var(--hue) 100% 65% / .7);
- border-radius:15px;font:13px system-ui;
- box-shadow:0 0 25px #000b,0 0 20px hsl(var(--hue) 100% 55% / .25);
- scrollbar-width:thin
+#od3{
+ --h:${S.hue};
+ position:fixed;z-index:2147483647;
+ left:50%;top:50%;transform:translate(-50%,-50%);
+ width:min(480px,calc(100vw - 16px));
+ height:min(850px,88dvh);
+ max-height:calc(100dvh - 16px);
+ display:flex;flex-direction:column;overflow:hidden;
+ color:#e9eaf0;background:#090b10;
+ border:1px solid hsl(var(--h) 95% 60% / .55);
+ border-radius:15px;
+ box-shadow:0 20px 70px #000e,0 0 28px hsl(var(--h) 100% 50% / .14);
+ font:12px/1.4 ui-monospace,Menlo,monospace;
+ padding:0;
+ padding-bottom:env(safe-area-inset-bottom);
 }
-#stimx *{box-sizing:border-box}
-#stimx header{display:flex;align-items:center;justify-content:space-between;gap:8px}
-#stimx h3{font-size:13px;letter-spacing:1px;margin:4px 0}
-#stimx button,#stimx input{
- background:#1b1b23;color:#eee;border:1px solid #ffffff25;
- border-radius:8px;padding:9px;font:inherit
+#od3 *{box-sizing:border-box}
+#od3 button,#od3 input,#od3 select{
+ font:inherit;color:inherit;background:#151923;
+ border:1px solid #ffffff20;border-radius:8px;
+ min-height:38px;padding:9px;
 }
-#stimx button{cursor:pointer}
-#stimx button:hover{border-color:hsl(var(--hue) 100% 65%)}
-#stimx button.active{background:hsl(var(--hue) 60% 25% / .4);border-color:hsl(var(--hue) 100% 65%)}
-#stimx input{width:100%;min-width:0}
-#stimx .rgb{height:3px;margin:10px 0;border-radius:5px;background:linear-gradient(90deg,red,yellow,lime,cyan,blue,magenta,red)}
-#stimx .status{color:#9df5b0;font-size:11px;min-height:16px;margin:8px 0}
-#stimx .tabs{display:flex;gap:5px;flex-wrap:wrap;margin:10px 0}
-#stimx .tabs button{flex:1;min-width:60px;font-size:10px}
-#stimx .panel{background:#ffffff08;border:1px solid #ffffff18;padding:10px;border-radius:10px;margin:8px 0}
-#stimx .line{display:flex;gap:6px;margin:7px 0;align-items:center}
-#stimx .line>*{flex:1;min-width:0}
-#stimx .muted{font-size:11px;color:#999}
-#stimx .feature{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #ffffff12}
-#stimx .feature:last-child{border:0}
-#stimx .feature-name{font-weight:600}
-#stimx .feature-desc{font-size:10px;color:#999;margin-top:3px}
-#stimx .feature button{font-size:10px;min-width:65px}
-#stimx .stat{font-size:12px;padding:7px 0;border-bottom:1px solid #ffffff12}
-#stimx .stat:last-child{border:0}
-#stimx .search{margin:8px 0}
-#stimx .search input{background:#17171d}
-#stimx .section-title{font-size:11px;color:#aaa;letter-spacing:1px;margin:12px 0 5px}
+#od3 button{cursor:pointer;touch-action:manipulation}
+#od3 button:active{transform:scale(.97)}
+#od3 button.active{
+ border-color:hsl(var(--h) 100% 65%);
+ background:hsl(var(--h) 70% 30% / .35);
+}
+#od3 input{min-width:0;width:100%}
+#od3 .header{
+ flex:none;padding:12px 13px 8px;
+ background:#0b0d13;border-bottom:1px solid #ffffff15;
+}
+#od3 .headrow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#od3 .brand{font-weight:1000;letter-spacing:1.5px;font-size:14px}
+#od3 .version{font-size:9px;color:#747b8b}
+#od3 .status{font-size:10px;color:#84e7a5;margin-top:7px;min-height:14px}
+#od3 .rgb{
+ height:2px;margin-top:9px;
+ background:linear-gradient(90deg,red,#ff0,lime,cyan,blue,magenta,red);
+ background-size:200% 100%;
+ animation:od3rgb 3s linear infinite;
+}
+@keyframes od3rgb{to{background-position:200% 0}}
+#od3 .tabs{
+ display:flex;gap:5px;overflow-x:auto;padding:8px 9px;
+ flex:none;scrollbar-width:none;border-bottom:1px solid #ffffff12;
+}
+#od3 .tabs button{flex:none;min-width:67px;min-height:35px;font-size:10px}
+#od3 main{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:10px}
+#od3 .bottom{
+ flex:none;padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+ border-top:1px solid #ffffff18;background:#0b0d13;
+ display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+}
+#od3 .bottom button{font-size:10px;min-height:39px}
+#od3 .panel{
+ padding:10px;margin-bottom:9px;
+ background:#ffffff07;border:1px solid #ffffff14;border-radius:10px;
+}
+#od3 .ptitle{
+ font-weight:900;letter-spacing:1px;color:hsl(var(--h) 100% 75%);
+ font-size:10px;margin-bottom:9px;
+}
+#od3 .muted{font-size:10px;color:#858b9a}
+#od3 .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+#od3 .stat{background:#ffffff08;border-radius:8px;padding:10px;min-width:0}
+#od3 .stat strong{display:block;font-size:15px;overflow-wrap:anywhere}
+#od3 .stat span{font-size:9px;color:#82899a;letter-spacing:1px}
+#od3 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+#od3 .grid button{font-size:10px;overflow:hidden;text-overflow:ellipsis}
+#od3 .line{display:flex;align-items:center;gap:7px;margin:7px 0}
+#od3 .line>*{flex:1;min-width:0}
+#od3 .feature{
+ display:flex;align-items:center;justify-content:space-between;
+ gap:8px;padding:9px 2px;border-bottom:1px solid #ffffff12;
+}
+#od3 .feature:last-child{border:0}
+#od3 .fname{font-weight:800;font-size:11px;overflow-wrap:anywhere}
+#od3 .fdesc{font-size:9px;color:#858b9a;overflow-wrap:anywhere}
+#od3 .feature button{flex:none;min-width:63px;font-size:9px}
+#od3 .search{position:sticky;top:-10px;z-index:2;padding:2px 0 8px;background:#090b10}
+#od3 .chips{display:flex;gap:5px;overflow-x:auto;padding:5px 0 9px;scrollbar-width:none}
+#od3 .chips button{flex:none;font-size:9px;min-height:32px}
+#od3 .pager{display:flex;align-items:center;gap:8px;margin:10px 0}
+#od3 .pager button{flex:1}
+#od3 .terminal{
+ background:#030508;border:1px solid #ffffff1c;border-radius:8px;
+ padding:8px;max-height:190px;overflow:auto;
+}
+#od3 .log{padding:5px 0;border-bottom:1px solid #ffffff0d;font-size:10px;overflow-wrap:anywhere}
+#od3 .log.error{color:#ff7777}
+#od3 .log.success{color:#80e5a1}
+#od3 .time{color:#697184;margin-right:6px}
+#od3 .hidden{display:none!important}
+#od3 .danger{color:#ff7777}
+#od3 .full{width:100%}
+#od3 .badge{font-size:9px;color:#9aa2b4}
+#od3 .command-input{display:flex;gap:6px;margin-top:8px}
+#od3 .command-input input{flex:1}
+#od3 .command-input button{flex:none}
+@media(max-width:600px){
+ #od3{
+  left:0;top:auto;bottom:0;transform:none;
+  width:100vw;height:88dvh;max-height:94dvh;
+  border-radius:16px 16px 0 0;
+  border-left:0;border-right:0;border-bottom:0;
+ }
+ #od3 .header{padding-top:max(10px,env(safe-area-inset-top))}
+ #od3 .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ #od3 button{min-height:42px}
+ #od3 .feature button{min-height:38px}
+}
 `;
+
 document.head.appendChild(style);
 
 const root = document.createElement('div');
-root.id = 'stimx';
+root.id = 'od3';
 root.innerHTML = `
-<header>
- <h3>◈ STIMULATION OVERDRIVE X</h3>
- <button id="minimize">—</button>
-</header>
-<div class="rgb"></div>
-<div class="status" id="status">Connecting to game...</div>
-<div class="tabs" id="tabs"></div>
-<main id="content"></main>
+ <header class="header">
+  <div class="headrow">
+   <div>
+    <div class="brand">◈ OVERDRIVE <span style="color:hsl(var(--h) 100% 65%)">X</span></div>
+    <div class="version">STIMULATION CLIENT // ${VERSION}</div>
+   </div>
+   <div class="headrow">
+    <button id="od3-min">—</button>
+    <button id="od3-hide">×</button>
+   </div>
+  </div>
+  <div class="rgb"></div>
+  <div class="status" id="od3-status">INITIALIZING CLIENT...</div>
+ </header>
+ <nav class="tabs" id="od3-tabs"></nav>
+ <main id="od3-content"></main>
+ <footer class="bottom" id="od3-bottom"></footer>
 `;
+
 document.body.appendChild(root);
 
-function notify(message) {
-    const el = $('#status', root);
-    if (el) el.textContent = message;
+function applyHue() {
+    root.style.setProperty('--h', S.hue);
 }
 
-function setHue(hue) {
-    S.hue = ((hue % 360) + 360) % 360;
-    root.style.setProperty('--hue', S.hue);
-    saveSettings();
+function button(label, action, active = false) {
+    const el = document.createElement('button');
+    el.textContent = label;
+    if (active) el.classList.add('active');
+    el.addEventListener('click', action);
+    return el;
 }
 
-function createButton(label, fn, active = false) {
-    const b = document.createElement('button');
-    b.textContent = label;
-    if (active) b.classList.add('active');
-    b.onclick = fn;
-    return b;
-}
+function panel(title, subtitle = '') {
+    const el = document.createElement('section');
+    el.className = 'panel';
 
-function makePanel(title, description = '') {
-    const p = document.createElement('section');
-    p.className = 'panel';
+    const heading = document.createElement('div');
+    heading.className = 'ptitle';
+    heading.textContent = title;
+    el.append(heading);
 
-    const h = document.createElement('b');
-    h.textContent = title;
-    p.append(h);
-
-    if (description) {
-        const d = document.createElement('div');
-        d.className = 'muted';
-        d.textContent = description;
-        p.append(d);
+    if (subtitle) {
+        const sub = document.createElement('div');
+        sub.className = 'muted';
+        sub.textContent = subtitle;
+        el.append(sub);
     }
 
-    return p;
+    return el;
 }
 
-function renderDashboard(content) {
-    const p = makePanel('LIVE GAME STATUS');
-    const stats = [
-        ['Connection', S.game ? 'Connected' : 'Disconnected'],
-        ['Stimulation', getBalance().toLocaleString()],
-        ['Multiplier', S.multiplier.toLocaleString() + '×'],
-        ['Passive rate', S.passiveRate.toLocaleString() + '/s'],
-        ['Session time', Math.floor((Date.now() - S.started) / 1000) + ' seconds']
-    ];
+function stat(label, value) {
+    const el = document.createElement('div');
+    el.className = 'stat';
 
-    stats.forEach(([name, value]) => {
-        const row = document.createElement('div');
-        row.className = 'stat';
-        row.textContent = name + ': ' + value;
-        p.append(row);
-    });
+    const strong = document.createElement('strong');
+    strong.textContent = value;
 
-    content.append(p);
+    const span = document.createElement('span');
+    span.textContent = label;
 
-    const quick = makePanel('QUICK ACTIONS');
-    const row = document.createElement('div');
-    row.className = 'line';
+    el.append(strong, span);
+    return el;
+}
 
-    row.append(
-        createButton('+1M', () => { inject(1e6); refresh(); }),
-        createButton('+1B', () => { inject(1e9); refresh(); }),
-        createButton('+1T', () => { inject(1e12); refresh(); }),
-        createButton('CLICK', () => { mainClick(); refresh(); })
+function renderHome(content) {
+    const p = panel('LIVE TELEMETRY', 'SESSION OVERVIEW');
+    const grid = document.createElement('div');
+    grid.className = 'stats';
+
+    grid.append(
+        stat('GAME LINK', S.game ? 'ONLINE' : 'OFFLINE'),
+        stat('BALANCE', fmt(balance())),
+        stat('MULTIPLIER', fmt(S.multiplier) + 'x'),
+        stat('PASSIVE RATE', fmt(S.passiveRate) + '/s'),
+        stat('INJECTED', fmt(S.stats.injected)),
+        stat('COMMANDS', fmt(S.stats.commands))
     );
 
-    quick.append(row);
+    p.append(grid);
+    content.append(p);
+
+    const quick = panel('QUICK ACTIONS');
+    const actions = document.createElement('div');
+    actions.className = 'grid';
+
+    for (const [name, amount] of [
+        ['+1M', 1e6], ['+1B', 1e9], ['+1T', 1e12],
+        ['+1Q', 1e15], ['+1Qi', 1e18], ['+1Sx', 1e21]
+    ]) {
+        actions.append(button(name, () => {
+            log(inject(amount) ? name + ' INJECTED' : 'INJECTION FAILED');
+            refresh();
+        }));
+    }
+
+    actions.append(
+        button('CLICK', () => { clickMain(); refresh(); }),
+        button('COLLECT', () => { log('COLLECTED ' + collectAll()); refresh(); }),
+        button('RECONNECT', connect)
+    );
+
+    quick.append(actions);
     content.append(quick);
 
-    const p2 = makePanel('SESSION STATISTICS');
-    Object.entries(S.stats).forEach(([name, value]) => {
-        const row = document.createElement('div');
-        row.className = 'stat';
-        row.textContent = name + ': ' + Number(value).toLocaleString();
-        p2.append(row);
-    });
+    const metrics = panel('SESSION STATISTICS');
+    const statsGrid = document.createElement('div');
+    statsGrid.className = 'stats';
 
-    content.append(p2);
+    for (const [key, value] of Object.entries(S.stats)) {
+        statsGrid.append(stat(key.toUpperCase(), fmt(value)));
+    }
+
+    metrics.append(statsGrid);
+    content.append(metrics);
 }
 
-function renderBoost(content) {
-    const p = makePanel('CUSTOM STIMULATION INPUT', 'Enter any positive number.');
+function renderStim(content) {
+    const p = panel('STIMULATION LAB', 'CUSTOM INPUT / PRESETS');
+
+    const input = document.createElement('input');
+    input.placeholder = 'Stimulation amount';
+    input.inputMode = 'decimal';
+    input.value = '1000000';
 
     const row = document.createElement('div');
     row.className = 'line';
-
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.placeholder = 'Enter amount';
-    input.value = '1000000';
-
-    row.append(input, createButton('INJECT', () => {
-        const n = Number(input.value);
-        notify(Number.isFinite(n) && n > 0
-            ? (inject(n) ? 'Stimulation injected.' : 'Game connection unavailable.')
-            : 'Enter a valid positive amount.');
+    row.append(input, button('INJECT', () => {
+        log(inject(Number(input.value)) ? 'INJECTION COMPLETE' : 'INVALID AMOUNT');
         refresh();
     }));
 
     p.append(row);
 
-    const presets = document.createElement('div');
-    presets.className = 'line';
+    const grid = document.createElement('div');
+    grid.className = 'grid';
 
-    [
-        ['1K', 1e3],
-        ['1M', 1e6],
-        ['1B', 1e9],
-        ['1T', 1e12],
-        ['1Q', 1e15]
-    ].forEach(([label, value]) => {
-        presets.append(createButton(label, () => {
-            notify(inject(value) ? label + ' injected.' : 'Injection failed.');
+    for (const [name, value] of [
+        ['1K', 1e3], ['10K', 1e4], ['100K', 1e5],
+        ['1M', 1e6], ['10M', 1e7], ['100M', 1e8],
+        ['1B', 1e9], ['10B', 1e10], ['100B', 1e11],
+        ['1T', 1e12], ['1Q', 1e15], ['1Qi', 1e18]
+    ]) {
+        grid.append(button(name, () => {
+            log(inject(value) ? name + ' INJECTED' : 'INJECTION FAILED');
             refresh();
         }));
-    });
+    }
 
-    p.append(presets);
+    p.append(grid);
     content.append(p);
 
-    const m = makePanel('MULTIPLIER CONTROL');
-    const mrow = document.createElement('div');
-    mrow.className = 'line';
+    const m = panel('MULTIPLIER');
+    const multiplier = document.createElement('input');
+    multiplier.type = 'number';
+    multiplier.value = String(S.multiplier);
 
-    [1, 10, 100, 1000, 1e6].forEach(value => {
-        mrow.append(createButton(
-            value === 1e6 ? '1M×' : value + '×',
-            () => {
-                S.multiplier = value;
-                saveSettings();
-                refresh();
-            },
-            S.multiplier === value
-        ));
-    });
+    m.append(multiplier);
 
-    m.append(mrow);
+    const mg = document.createElement('div');
+    mg.className = 'grid';
 
-    const custom = document.createElement('input');
-    custom.type = 'number';
-    custom.placeholder = 'Custom multiplier';
-    custom.value = S.multiplier;
+    for (const value of [1, 10, 100, 1000, 1e6, 1e9]) {
+        mg.append(button(fmt(value) + 'x', () => setMultiplier(value)));
+    }
 
-    m.append(custom, createButton('SET MULTIPLIER', () => {
-        const value = Number(custom.value);
-        if (Number.isFinite(value) && value > 0) {
-            S.multiplier = value;
-            saveSettings();
-            refresh();
-        }
-    }));
-
+    m.append(mg, button('APPLY CUSTOM', () => setMultiplier(multiplier.value)));
     content.append(m);
+
+    const passive = panel('PASSIVE GENERATOR');
+    const rate = document.createElement('input');
+    rate.type = 'number';
+    rate.value = String(S.passiveRate);
+
+    passive.append(
+        rate,
+        button('SET PASSIVE RATE', () => {
+            const n = Number(rate.value);
+            if (Number.isFinite(n) && n >= 0) {
+                S.passiveRate = n;
+                save();
+                refresh();
+            }
+        }),
+        button(S.auto['Passive Injector'] ? 'PASSIVE ON' : 'PASSIVE OFF', () => {
+            S.auto['Passive Injector'] = !S.auto['Passive Injector'];
+            save();
+            refresh();
+        }, !!S.auto['Passive Injector'])
+    );
+
+    content.append(passive);
 }
 
 function renderFeatures(content) {
-    const search = document.createElement('div');
-    search.className = 'search';
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'search';
 
-    const input = document.createElement('input');
-    input.placeholder = 'Search features...';
-    input.value = S.search;
+    const search = document.createElement('input');
+    search.placeholder = '⌕ Search 22,000+ feature configurations...';
+    search.value = S.search;
 
-    input.oninput = () => {
-        S.search = input.value.toLowerCase();
+    search.oninput = () => {
+        S.search = search.value;
+        S.page = 0;
         render();
-        const next = $('.search input', root);
-        if (next) {
-            next.focus();
-            next.setSelectionRange(next.value.length, next.value.length);
-        }
+        const next = $('#od3-content input');
+        next?.focus();
+        if (next) next.setSelectionRange(next.value.length, next.value.length);
     };
 
-    search.append(input);
-    content.append(search);
+    searchWrap.append(search);
+    content.append(searchWrap);
 
-    const features = FEATURES.filter(f =>
-        f.category === S.tab &&
-        (f.name.toLowerCase().includes(S.search) ||
-         f.description?.toLowerCase().includes(S.search))
+    const categories = ['ALL', ...new Set(FEATURES.map(f => f.category))];
+    const chips = document.createElement('div');
+    chips.className = 'chips';
+
+    categories.forEach(category => {
+        chips.append(button(category, () => {
+            S.category = category;
+            S.page = 0;
+            refresh();
+        }, S.category === category));
+    });
+
+    content.append(chips);
+
+    const query = S.search.toLowerCase();
+    const filtered = FEATURES.filter(f =>
+        (S.category === 'ALL' || f.category === S.category) &&
+        (!query || (
+            f.name + ' ' + f.description + ' ' + f.command + ' ' + f.category
+        ).toLowerCase().includes(query))
     );
 
-    features.forEach(f => {
+    const pages = Math.max(1, Math.ceil(filtered.length / S.featurePageSize));
+    S.page = clamp(S.page, 0, pages - 1);
+
+    const info = document.createElement('div');
+    info.className = 'muted';
+    info.textContent = fmt(filtered.length) + ' MATCHES · ' +
+        fmt(FEATURES.length) + ' TOTAL CONFIGURATIONS';
+    content.append(info);
+
+    const start = S.page * S.featurePageSize;
+    const shown = filtered.slice(start, start + S.featurePageSize);
+
+    for (const feature of shown) {
         const row = document.createElement('div');
         row.className = 'feature';
 
-        const info = document.createElement('div');
+        const details = document.createElement('div');
         const name = document.createElement('div');
-        name.className = 'feature-name';
-        name.textContent = f.name;
+        name.className = 'fname';
+        name.textContent = feature.name;
 
         const desc = document.createElement('div');
-        desc.className = 'feature-desc';
-        desc.textContent = f.description || f.category;
+        desc.className = 'fdesc';
+        desc.textContent = feature.description + ' · ' + feature.command;
 
-        info.append(name, desc);
+        details.append(name, desc);
 
-        const enabled = !!S.auto[f.name];
-        const action = createButton(
-            f.type === 'toggle' ? (enabled ? 'ON' : 'OFF') : 'RUN',
-            () => {
-                if (f.type === 'toggle') {
-                    S.auto[f.name] = !S.auto[f.name];
-                    saveSettings();
-                    refresh();
-                } else {
-                    f.run();
+        row.append(
+            details,
+            button('EXEC', () => {
+                try {
+                    const result = feature.action();
+                    if (result instanceof Promise) {
+                        result.catch(e => log(e.message, 'error'));
+                    }
+                } catch (e) {
+                    log(e.message, 'error');
                 }
-            },
-            enabled
+            })
         );
 
-        row.append(info, action);
         content.append(row);
-    });
-
-    if (!features.length) {
-        const empty = document.createElement('div');
-        empty.className = 'muted';
-        empty.textContent = 'No matching features.';
-        content.append(empty);
     }
+
+    const pager = document.createElement('div');
+    pager.className = 'pager';
+
+    pager.append(
+        button('PREVIOUS', () => { S.page--; refresh(); }),
+        button((S.page + 1) + ' / ' + pages, () => {}),
+        button('NEXT', () => { S.page++; refresh(); })
+    );
+
+    pager.children[0].disabled = S.page <= 0;
+    pager.children[2].disabled = S.page >= pages - 1;
+
+    content.append(pager);
 }
 
-function renderUpgrades(content) {
-    const info = makePanel('CUSTOM UPGRADE SHOP', 'Costs scale with each purchase.');
-    const balance = document.createElement('div');
-    balance.className = 'muted';
-    balance.textContent = 'Balance: ' + getBalance().toLocaleString();
-    info.append(balance);
-    content.append(info);
+function renderAuto(content) {
+    const p = panel('AUTOMATION CORE', 'TOGGLE INDIVIDUAL MODULES');
 
-    UPGRADES.forEach((u, i) => {
-        const level = S.upgrades[i] || 0;
-        const cost = Math.floor(u.cost * Math.pow(1.8, level));
-        const p = makePanel(u.name, u.desc);
-
+    for (const [name] of AUTOMATIONS) {
         const row = document.createElement('div');
-        row.className = 'line';
+        row.className = 'feature';
 
-        const label = document.createElement('span');
-        label.textContent = 'Level ' + level;
+        const label = document.createElement('div');
+        label.innerHTML = '';
 
-        const costLabel = document.createElement('span');
-        costLabel.textContent = 'Cost: ' + cost.toLocaleString();
+        const title = document.createElement('div');
+        title.className = 'fname';
+        title.textContent = name;
 
-        row.append(label, costLabel);
-        p.append(row, createButton('PURCHASE', () => purchaseUpgrade(i)));
-        content.append(p);
+        const desc = document.createElement('div');
+        desc.className = 'fdesc';
+        desc.textContent = 'Automatic game interaction';
+
+        label.append(title, desc);
+
+        row.append(label, button(
+            S.auto[name] ? 'ACTIVE' : 'OFF',
+            () => {
+                S.auto[name] = !S.auto[name];
+                save();
+                refresh();
+            },
+            !!S.auto[name]
+        ));
+
+        p.append(row);
+    }
+
+    p.append(
+        button('ENABLE ALL', () => {
+            AUTOMATIONS.forEach(([name]) => S.auto[name] = true);
+            save();
+            refresh();
+        }),
+        button('DISABLE ALL', () => {
+            S.auto = {};
+            save();
+            refresh();
+        })
+    );
+
+    content.append(p);
+
+    const timing = panel('AUTOMATION TIMING');
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = String(S.interval);
+
+    timing.append(
+        input,
+        button('APPLY INTERVAL', () => setIntervalValue(input.value)),
+        document.createElement('div')
+    );
+
+    content.append(timing);
+}
+
+function renderTerminal(content) {
+    const p = panel('COMMAND TERMINAL', 'COMMAND REGISTRY / EXECUTION');
+
+    const count = document.createElement('div');
+    count.className = 'muted';
+    count.textContent = fmt(COMMANDS.length) + ' REGISTERED COMMANDS';
+    p.append(count);
+
+    const output = document.createElement('div');
+    output.className = 'terminal';
+
+    for (const entry of S.logs.slice(0, 18).reverse()) {
+        const line = document.createElement('div');
+        line.className = 'log ' + entry.type;
+
+        const time = document.createElement('span');
+        time.className = 'time';
+        time.textContent = '[' + entry.time + ']';
+
+        const text = document.createElement('span');
+        text.textContent = entry.message;
+
+        line.append(time, text);
+        output.append(line);
+    }
+
+    p.append(output);
+
+    const commandRow = document.createElement('div');
+    commandRow.className = 'command-input';
+
+    const input = document.createElement('input');
+    input.placeholder = 'root@overdrive:~$';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+
+    const run = button('RUN', () => {
+        executeCommand(input.value);
+        input.value = '';
+        refresh();
     });
+
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') run.click();
+    });
+
+    commandRow.append(input, run);
+    p.append(commandRow);
+    content.append(p);
+
+    const examples = panel('COMMAND EXAMPLES');
+    const help = document.createElement('div');
+    help.className = 'muted';
+    help.textContent =
+        'help · list · inject 1000000 · mult 100 · rate 500 · interval 150 · ' +
+        'click · collect · auto on · auto off · balance · stats · theme 220 · hide';
+    examples.append(help);
+    content.append(examples);
 }
 
 function renderStyle(content) {
-    const p = makePanel('RGB CHROMA');
+    const p = panel('CHROMA CONTROL', 'RGB / COLOR / INTERFACE');
 
     const hue = document.createElement('input');
     hue.type = 'range';
-    hue.min = '0';
-    hue.max = '360';
+    hue.min = 0;
+    hue.max = 360;
     hue.value = S.hue;
-    hue.oninput = () => setHue(Number(hue.value));
+
+    hue.oninput = () => {
+        S.hue = Number(hue.value);
+        applyHue();
+        save();
+    };
 
     p.append(hue);
 
-    const row = document.createElement('div');
-    row.className = 'line';
+    const grid = document.createElement('div');
+    grid.className = 'grid';
 
-    [
-        ['Red', 0],
-        ['Orange', 30],
-        ['Yellow', 55],
-        ['Green', 120],
-        ['Cyan', 180],
-        ['Blue', 220],
-        ['Purple', 275],
-        ['Pink', 320]
-    ].forEach(([name, value]) => {
-        row.append(createButton(name, () => {
-            setHue(value);
-            hue.value = value;
+    for (const [name, value] of [
+        ['RED', 0], ['ORANGE', 30], ['GOLD', 48],
+        ['GREEN', 120], ['CYAN', 180], ['BLUE', 220],
+        ['PURPLE', 275], ['PINK', 320], ['LIME', 90]
+    ]) {
+        grid.append(button(name, () => {
+            S.hue = value;
+            applyHue();
+            refresh();
+            save();
         }));
-    });
+    }
 
-    p.append(row);
+    p.append(grid);
 
-    p.append(createButton(S.rgb ? 'STOP RGB CYCLE' : 'START RGB CYCLE', () => {
+    p.append(button(S.rgb ? 'STOP RGB' : 'START RGB', () => {
         S.rgb = !S.rgb;
-
         if (S.rgb) {
-            S.rgbTimer = setInterval(() => setHue(S.hue + 2), 40);
+            S.rgbTimer = setInterval(() => {
+                S.hue = (S.hue + 2) % 360;
+                applyHue();
+            }, 40);
         } else {
             clearInterval(S.rgbTimer);
             S.rgbTimer = null;
         }
-
+        save();
         refresh();
-    }));
+    }, S.rgb));
+
+    p.append(button(S.compact ? 'COMPACT: ON' : 'COMPACT: OFF', () => {
+        S.compact = !S.compact;
+        root.classList.toggle('compact', S.compact);
+        save();
+        log('COMPACT MODE UPDATED');
+    }, S.compact));
 
     content.append(p);
 }
 
 function renderTools(content) {
-    const p = makePanel('SYSTEM TOOLS');
+    const p = panel('SYSTEM CONTROL');
 
-    [
-        ['Reconnect', async () => notify(await connect() ? 'Connected.' : 'Not detected.')],
-        ['Inspect state', () => {
-            console.log('[Stim X]', {
-                game: S.game,
-                balance: getBalance(),
-                settings: S
-            });
-            notify('State printed to console.');
-        }],
-        ['Refresh interface', () => refresh()],
-        ['Reset session stats', () => {
-            S.stats = { injected: 0, clicks: 0, collected: 0, purchases: 0 };
+    p.append(
+        button('RECONNECT GAME', connect),
+        button('COPY BALANCE', async () => {
+            try {
+                await navigator.clipboard.writeText(String(balance()));
+                log('BALANCE COPIED');
+            } catch {
+                prompt('BALANCE', String(balance()));
+            }
+        }),
+        button('EXPORT SETTINGS', () => {
+            prompt('CONFIGURATION', JSON.stringify({
+                hue: S.hue,
+                multiplier: S.multiplier,
+                passiveRate: S.passiveRate,
+                interval: S.interval,
+                auto: S.auto
+            }, null, 2));
+        }),
+        button('RESET SESSION STATS', () => {
+            S.stats = { injected: 0, clicks: 0, collected: 0, actions: 0, commands: 0 };
             refresh();
-        }],
-        ['Close menu', () => destroy()]
-    ].forEach(([name, fn]) => {
-        p.append(createButton(name, fn));
-    });
+            log('STATISTICS RESET');
+        }),
+        button('STOP ALL AUTOMATION', () => {
+            S.auto = {};
+            save();
+            refresh();
+            log('AUTOMATION STOPPED');
+        }),
+        button('DESTROY CLIENT', destroy)
+    );
 
     content.append(p);
 }
 
 const TABS = [
-    'Dashboard',
-    'Boost',
-    'Stimulation',
-    'Automation',
-    'Upgrades',
-    'Style',
-    'Tools'
+    ['HOME', renderHome],
+    ['STIM', renderStim],
+    ['FEATURES', renderFeatures],
+    ['AUTO', renderAuto],
+    ['TERMINAL', renderTerminal],
+    ['STYLE', renderStyle],
+    ['TOOLS', renderTools]
 ];
 
 function render() {
     if (S.destroyed) return;
 
-    const tabs = $('#tabs', root);
-    const content = $('#content', root);
+    const tabs = $('#od3-tabs');
+    const content = $('#od3-content');
+    const bottom = $('#od3-bottom');
+
     tabs.innerHTML = '';
     content.innerHTML = '';
+    bottom.innerHTML = '';
 
-    TABS.forEach(name => {
-        tabs.append(createButton(name, () => {
+    TABS.forEach(([name]) => {
+        tabs.append(button(name, () => {
             S.tab = name;
+            S.page = 0;
             S.search = '';
-            render();
+            S.category = 'ALL';
+            refresh();
         }, S.tab === name));
     });
 
-    if (S.tab === 'Dashboard') renderDashboard(content);
-    if (S.tab === 'Boost') renderBoost(content);
-    if (S.tab === 'Stimulation' || S.tab === 'Automation') renderFeatures(content);
-    if (S.tab === 'Upgrades') renderUpgrades(content);
-    if (S.tab === 'Style') renderStyle(content);
-    if (S.tab === 'Tools') renderTools(content);
+    const selected = TABS.find(([name]) => name === S.tab);
+    selected?.[1](content);
+
+    for (const name of ['HOME', 'STIM', 'FEATURES', 'TERMINAL']) {
+        bottom.append(button(name, () => {
+            S.tab = name;
+            S.page = 0;
+            refresh();
+        }, S.tab === name));
+    }
 }
 
 function refresh() {
     if (!S.destroyed) render();
 }
 
-/* AUTOMATION ENGINE */
-
-function automationTick() {
-    if (S.destroyed) return;
-
-    for (const feature of FEATURES) {
-        if (feature.type !== 'toggle' || !S.auto[feature.name]) continue;
-
-        try {
-            feature.run();
-        } catch (error) {
-            console.error('[Stim X automation]', feature.name, error);
-        }
-    }
+function toggle() {
+    S.visible = !S.visible;
+    root.style.display = S.visible ? 'flex' : 'none';
 }
 
 function destroy() {
+    if (S.destroyed) return;
     S.destroyed = true;
 
     S.timers.forEach(clearInterval);
+    clearInterval(S.automationTimer);
     if (S.rgbTimer) clearInterval(S.rgbTimer);
 
     root.remove();
     style.remove();
 
-    delete window.__STIM_X__;
+    delete window.__STIM_X3__;
 }
 
-root.querySelector('#minimize').onclick = () => {
-    S.minimized = !S.minimized;
-    $('#content', root).style.display = S.minimized ? 'none' : '';
-    $('#tabs', root).style.display = S.minimized ? 'none' : '';
-    root.style.width = S.minimized ? '220px' : '370px';
+$('#od3-hide', root).onclick = toggle;
+
+$('#od3-min', root).onclick = () => {
+    root.style.height = root.style.height === '52px' ? '88dvh' : '52px';
+    $('#od3-tabs').classList.toggle('hidden');
+    $('#od3-content').classList.toggle('hidden');
+    $('#od3-bottom').classList.toggle('hidden');
 };
 
-S.toggle = () => {
-    root.style.display = root.style.display === 'none' ? 'block' : 'none';
-};
-
+S.toggle = toggle;
 S.destroy = destroy;
-window.__STIM_X__ = S;
+S.refresh = refresh;
+S.execute = executeCommand;
+S.inject = inject;
+S.connect = connect;
+S.features = FEATURES;
+S.commands = COMMANDS;
+S.version = VERSION;
 
-render();
-setHue(S.hue);
+window.__STIM_X3__ = S;
 
-S.timers.push(setInterval(automationTick, 100));
-S.timers.push(setInterval(() => {
-    if (!S.destroyed && S.tab === 'Dashboard') render();
-}, 1500));
+document.addEventListener('keydown', e => {
+    if (
+        e.code === 'ShiftRight' &&
+        !e.repeat &&
+        !e.target.matches('input,textarea')
+    ) toggle();
 
-connect().then(ok => {
-    notify(ok ? 'Game connected. Overdrive X ready.' : 'Game not detected. Reload the game and retry.');
+    if (e.key === 'Escape' && S.visible) toggle();
 });
 
-console.info('[Stim X] Loaded version', VERSION);
+let startY = 0;
+root.addEventListener('touchstart', e => {
+    startY = e.touches[0]?.clientY || 0;
+}, { passive: true });
+
+root.addEventListener('touchend', e => {
+    const endY = e.changedTouches[0]?.clientY || 0;
+    if (endY - startY > 130 && root.scrollTop === 0) {
+        root.style.height = '52dvh';
+    }
+}, { passive: true });
+
+render();
+applyHue();
+
+S.automationTimer = setInterval(automationTick, S.interval);
+connect();
+
+log(
+    'OVERDRIVE ' + VERSION + ' ONLINE · ' +
+    fmt(FEATURES.length) + ' FEATURES · ' +
+    fmt(COMMANDS.length) + ' COMMANDS',
+    'success'
+);
+
+console.info('[OD3] Loaded', {
+    version: VERSION,
+    features: FEATURES.length,
+    commands: COMMANDS.length
+});
 
 })();
