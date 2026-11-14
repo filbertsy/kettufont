@@ -17,6 +17,7 @@ document.getElementById('od3')?.remove();
 document.getElementById('od3-style')?.remove();
 
 const $ = (s, r = document) => r.querySelector(s);
+const $ = (s, r = document) => [...r.querySelectorAll(s)];
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
 const fmt = n => {
     if (!Number.isFinite(Number(n))) return String(n);
