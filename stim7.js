@@ -17,7 +17,7 @@ document.getElementById('od3')?.remove();
 document.getElementById('od3-style')?.remove();
 
 const $ = (s, r = document) => r.querySelector(s);
-const $ = (s, r = document) => [...r.querySelectorAll(s)];
+const queryAll = (s, r = document) => Array.from(r.querySelectorAll(s));
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
 const fmt = n => {
     if (!Number.isFinite(Number(n))) return String(n);
@@ -179,7 +179,7 @@ function clickMain() {
             return true;
         }
 
-        const button = $$('button').find(
+        const button = queryAll('button').find(
             b => b.textContent.trim() === 'Click me'
         );
 
@@ -212,7 +212,7 @@ const SELECTORS = {
 function clickElements(selector, limit = 20) {
     let count = 0;
 
-    for (const el of $$(selector)) {
+    for (const el of queryAll(selector)) {
         if (count >= limit) break;
         if (!el || el.disabled || el.offsetParent === null) continue;
 
@@ -228,7 +228,7 @@ function clickElements(selector, limit = 20) {
 }
 
 function clickText(text) {
-    const el = $$('button').find(b =>
+    const el = queryAll('button').find(b =>
         b.textContent.trim().toLowerCase() === text.toLowerCase() &&
         !b.disabled && b.offsetParent !== null
     );
