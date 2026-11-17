@@ -1,6 +1,6 @@
 
 javascript:(()=>{
-const ID="ad-save-editor-v10-1",HOOK="__adSaveEditorV10_1",PREFIX="AntimatterDimensionsSavefileFormat",SUFFIX="EndOfSavefile",STORE="ad-save-editor-v7-settings";
+const ID="ad-save-editor-v10",HOOK="__adSaveEditorV11",PREFIX="AntimatterDimensionsSavefileFormat",SUFFIX="EndOfSavefile",STORE="ad-save-editor-v7-settings";
 window.__adSaveEditorV10?.restore?.();
 document.getElementById("ad-save-editor-v10")?.remove();
 window[HOOK]?.restore?.();
@@ -9,7 +9,7 @@ document.getElementById(ID)?.remove();
 const defaults={
  title:"antimatter dimensions",
  brandLabel:"save editor",
- subtitle:"developer console Â· v10.1",
+ subtitle:"developer console Â· v11 appearance studio",
  accent:"#c45361",
  rgb:false,
  background:"#111116",
@@ -23,6 +23,7 @@ const defaults={
  compact:false,
  animations:true,
  speed:100,
+ brandLabel:"save editor",secondary:"#d9828e",muted:"#92929e",panelColor:"#1c1c24",inputColor:"#191920",headerColor:"#20171c",success:"#8cda9d",warning:"#e5a0a0",shadowColor:"#000000",shadowStrength:72,borderWidth:1,fontFamily:"system-ui",fontWeight:400,letterSpacing:0,lineHeight:1.4,scale:100,maxHeight:84,top:14,left:14,tabStyle:"rounded",entrance:"bloom",animationDuration:380,hoverEffects:true,showStatus:true,showFooter:true,
  rate:"1e100",
  generator:false,
  amRate:"1e100",
@@ -47,15 +48,15 @@ p.innerHTML=`
  width:min(var(--width),calc(100vw - 28px));max-height:84vh;
  background:var(--bg);color:var(--text);border:1px solid var(--border);
  border-radius:var(--radius);box-shadow:0 18px 60px #000b;
- font:var(--font)/1.4 system-ui;overflow:hidden;
+ font:var(--font)/var(--line-height) var(--font-family);font-weight:var(--font-weight);letter-spacing:var(--letter-spacing);overflow:hidden;
  transform-origin:top left;animation:ad7Bloom .38s cubic-bezier(.16,1,.3,1) both;
  backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));
 }
 #ad-save-editor-v10 *{box-sizing:border-box}
-#ad-save-editor-v10 .top{padding:10px 12px;background:linear-gradient(120deg,#20171c,#15151b 65%);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;touch-action:none;user-select:none;cursor:grab}
+#ad-save-editor-v10 .top{padding:10px 12px;background:linear-gradient(120deg,var(--header-color),var(--bg) 75%);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;touch-action:none;user-select:none;cursor:grab}
 #ad-save-editor-v10 .brand{font-weight:750;font-size:14px;white-space:nowrap}
 #ad-save-editor-v10 .brand span{color:var(--accent)}
-#ad-save-editor-v10 .sub{color:#858590;font-size:10px;margin-top:2px}
+#ad-save-editor-v10 .sub{color:var(--muted);font-size:10px;margin-top:2px}
 #ad-save-editor-v10 .topbuttons{display:flex;gap:5px}
 #ad-save-editor-v10 .topbuttons button{min-width:36px;min-height:34px;padding:4px;font-size:18px}
 #ad-save-editor-v10 button{background:#25252e;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:7px 10px;font:inherit;cursor:pointer;touch-action:manipulation;transition:background calc(160ms * var(--speed)),border-color calc(160ms * var(--speed)),transform calc(160ms * var(--speed))}
@@ -63,7 +64,7 @@ p.innerHTML=`
 #ad-save-editor-v10 button:active{transform:scale(.97)}
 #ad-save-editor-v10 button.primary{background:var(--accent);border-color:var(--accent);color:white}
 #ad-save-editor-v10 button.active{border-color:var(--accent);background:#69313a}
-#ad-save-editor-v10 input,#ad-save-editor-v10 textarea,#ad-save-editor-v10 select{background:#191920;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:8px;font:inherit;outline:none;min-width:0}
+#ad-save-editor-v10 input,#ad-save-editor-v10 textarea,#ad-save-editor-v10 select{background:var(--input-color);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:8px;font:inherit;outline:none;min-width:0}
 #ad-save-editor-v10 input:focus,#ad-save-editor-v10 textarea:focus,#ad-save-editor-v10 select:focus{border-color:var(--accent)}
 #ad-save-editor-v10 input[type=color]{height:34px;width:48px;padding:3px;cursor:pointer}
 #ad-save-editor-v10 input[type=range]{width:100%;accent-color:var(--accent)}
@@ -78,11 +79,11 @@ p.innerHTML=`
 #ad-save-editor-v10 .panel.active{display:block;animation:ad7Tab calc(230ms * var(--speed)) ease both}
 #ad-save-editor-v10 .sectiontitle{font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.9px;margin:2px 0 8px}
 #ad-save-editor-v10 .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-#ad-save-editor-v10 .stat{background:#1c1c24;border:1px solid var(--border);border-radius:8px;padding:9px;min-width:0}
-#ad-save-editor-v10 .stat small{display:block;color:#92929e;margin-bottom:4px;font-size:10px}
+#ad-save-editor-v10 .stat{background:var(--panel-color);border:1px solid var(--border);border-radius:8px;padding:9px;min-width:0}
+#ad-save-editor-v10 .stat small{display:block;color:var(--muted);margin-bottom:4px;font-size:10px}
 #ad-save-editor-v10 .stat b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
 #ad-save-editor-v10 .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
-#ad-save-editor-v10 .field{display:flex;align-items:center;gap:9px;padding:8px 9px;background:#1b1b22;border:1px solid var(--border);border-radius:8px;margin-bottom:6px}
+#ad-save-editor-v10 .field{display:flex;align-items:center;gap:9px;padding:8px 9px;background:var(--panel-color);border:1px solid var(--border);border-radius:8px;margin-bottom:6px}
 #ad-save-editor-v10 .fieldname{flex:1;min-width:0}
 #ad-save-editor-v10 .fieldname b{display:block;font-size:12px;font-weight:600;overflow-wrap:anywhere}
 #ad-save-editor-v10 .fieldname small{display:block;color:#777783;font:9px monospace;margin-top:2px;overflow-wrap:anywhere}
@@ -204,7 +205,22 @@ p.innerHTML=`
 </div>`;
 
 document.body.appendChild(p);
+
 const $=id=>p.querySelector("#"+id);
+const studio=document.createElement("div");studio.className="settingbox";studio.id="appearance-studio";
+studio.innerHTML='<div class="sectiontitle">Appearance studio · advanced</div><div class="hint">Live preview. All settings save locally.</div>';
+const specs=[
+["brandLabel","Brand label","text"],["secondary","Secondary accent","color"],["muted","Muted text","color"],["panelColor","Card color","color"],["inputColor","Input color","color"],["headerColor","Header tint","color"],["success","Success color","color"],["warning","Warning color","color"],["shadowColor","Shadow color","color"],["shadowStrength","Shadow strength","range",0,100,1],["borderWidth","Border thickness","range",0,4,.5],["fontFamily","Font family","select",["system-ui","Arial, sans-serif","Verdana, sans-serif","Georgia, serif","monospace"]],["fontWeight","Font weight","select",["300","400","500","600","700","800"]],["letterSpacing","Letter spacing","range",-1,3,.1],["lineHeight","Line height","range",1,2,.05],["scale","Interface scale","range",75,125,5],["maxHeight","Maximum height","range",50,95,1],["top","Top offset","range",0,300,2],["left","Left offset","range",0,500,2],["tabStyle","Tab style","select",["rounded","underline","pill","flat"]],["entrance","Entrance animation","select",["bloom","slide","fade","none"]],["animationDuration","Animation duration","range",100,900,25],["hoverEffects","Hover effects","checkbox"],["showStatus","Show status bar","checkbox"],["showFooter","Show footer","checkbox"]];
+for(const [key,label,type,a,b,c] of specs){const row=document.createElement("div"),lab=document.createElement("label"),el=document.createElement(type==="select"?"select":"input");row.className="setting";lab.textContent=label;el.dataset.setting=key;if(type==="select")el.innerHTML=a.map(x=>'<option value="'+x+'">'+x+'</option>').join("");else{el.type=type;if(type==="range"){el.min=a;el.max=b;el.step=c}}row.append(lab,el);studio.appendChild(row)}
+const actions=document.createElement("div");actions.className="actions";actions.innerHTML='<button class="primary" id="studio-export">Export settings</button><button id="studio-import">Import settings</button><input id="studio-file" type="file" accept=".json,application/json" hidden>';studio.appendChild(actions);
+const themes={midnight:{accent:"#c45361",secondary:"#d9828e",background:"#111116",text:"#eeeeee",border:"#34343e",panelColor:"#1c1c24",inputColor:"#191920",headerColor:"#20171c",muted:"#92929e"},rose:{accent:"#ed7897",secondary:"#ffb3c6",background:"#1b1018",text:"#fff0f5",border:"#593044",panelColor:"#291925",inputColor:"#20131d",headerColor:"#3a1c2b",muted:"#c69aaa"},ocean:{accent:"#54a9dc",secondary:"#8bd5ff",background:"#0d151d",text:"#e8f5ff",border:"#29465c",panelColor:"#142432",inputColor:"#0e1c28",headerColor:"#18364a",muted:"#91aebe"},forest:{accent:"#70bd91",secondary:"#a6e0b7",background:"#101813",text:"#eaf6ed",border:"#304a38",panelColor:"#1a2920",inputColor:"#142018",headerColor:"#1c3827",muted:"#9cb4a2"},paper:{accent:"#9b5361",secondary:"#bd7885",background:"#f1eee9",text:"#25232a",border:"#d0c8c0",panelColor:"#ffffff",inputColor:"#f8f6f2",headerColor:"#e7dce0",muted:"#77717a"},mono:{accent:"#b8b8c2",secondary:"#eeeeee",background:"#111111",text:"#f5f5f5",border:"#444444",panelColor:"#202020",inputColor:"#171717",headerColor:"#292929",muted:"#aaaaaa"}};
+const themeRow=document.createElement("div");themeRow.className="actions";for(const name of Object.keys(themes)){const btn=document.createElement("button");btn.textContent=name;btn.onclick=()=>{Object.assign(settings,themes[name]);persist();applySettings();syncStudio();say("Theme applied: "+name,true)};themeRow.appendChild(btn)}studio.appendChild(themeRow);
+$("panel-settings").appendChild(studio);
+const syncStudio=()=>p.querySelectorAll("[data-setting]").forEach(el=>{const k=el.dataset.setting;if(el.type==="checkbox")el.checked=!!settings[k];else el.value=settings[k]??""});
+$("studio-export").onclick=()=>{const blob=new Blob([JSON.stringify(settings,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="ad-panel-settings.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);say("Settings exported",true)};
+$("studio-import").onclick=()=>$("studio-file").click();
+$("studio-file").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{const obj=JSON.parse(await file.text());if(!obj||typeof obj!=="object"||Array.isArray(obj))throw Error("Invalid settings JSON");settings={...defaults,...settings,...obj};persist();applySettings();syncStudio();say("Settings imported",true)}catch(err){say("Import failed: "+err.message)}e.target.value=""};
+
 const say=(s,ok=false)=>{$("status").textContent=s;$("footerstatus").textContent=s;$("status").style.color=ok?"#8cda9d":"#e5a0a0"};
 const persist=()=>{try{localStorage.setItem(STORE,JSON.stringify(settings))}catch(e){say("Could not save settings")}};
 function hexToRgba(hex,alpha){const h=hex.replace("#","");const n=parseInt(h.length===3?h.split("").map(x=>x+x).join(""):h,16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${alpha})`}
@@ -218,12 +234,13 @@ function applySettings(){
  p.style.setProperty("--font",settings.font+"px");
  p.style.setProperty("--blur",settings.blur+"px");
  p.style.setProperty("--speed",settings.speed/100);
+ p.style.setProperty("--secondary",settings.secondary);p.style.setProperty("--muted",settings.muted);p.style.setProperty("--panel-color",settings.panelColor);p.style.setProperty("--input-color",settings.inputColor);p.style.setProperty("--header-color",settings.headerColor);p.style.setProperty("--success",settings.success);p.style.setProperty("--warning",settings.warning);p.style.setProperty("--shadow-color",hexToRgba(settings.shadowColor,settings.shadowStrength/100));p.style.setProperty("--border-width",settings.borderWidth+"px");p.style.setProperty("--font-family",settings.fontFamily);p.style.setProperty("--font-weight",settings.fontWeight);p.style.setProperty("--letter-spacing",settings.letterSpacing+"px");p.style.setProperty("--line-height",settings.lineHeight);p.style.zoom=String(settings.scale/100);p.style.maxHeight=settings.maxHeight+"vh";p.style.top=settings.top+"px";p.style.left=settings.left+"px";p.dataset.tabStyle=settings.tabStyle;p.classList.toggle("nohover",!settings.hoverEffects);$("status").parentElement.parentElement.style.display=settings.showStatus?"flex":"none";p.querySelector(".footer").style.display=settings.showFooter?"flex":"none";p.style.animation=settings.entrance==="none"?"none":settings.entrance==="fade"?"ad7Fade "+settings.animationDuration+"ms ease both":settings.entrance==="slide"?"ad7Slide "+settings.animationDuration+"ms cubic-bezier(.16,1,.3,1) both":"ad7Bloom "+settings.animationDuration+"ms cubic-bezier(.16,1,.3,1) both";
  p.classList.toggle("rgb",!!settings.rgb);
  p.classList.toggle("noanim",!settings.animations);
  p.style.setProperty("--compact",settings.compact?"1":"0");
  p.querySelector(".body").style.padding=settings.compact?"6px":"10px";
  p.querySelectorAll(".field").forEach(x=>x.style.padding=settings.compact?"5px 7px":"8px 9px");
- $("customtitle").textContent=settings.title;
+ $("customtitle").textContent=settings.title;\n $("custombrandlabel").textContent=settings.brandLabel;
  $("customsubtitle").textContent=settings.subtitle;
  p.querySelectorAll("[data-setting]").forEach(el=>{
   const k=el.dataset.setting;
@@ -241,7 +258,7 @@ p.querySelectorAll("[data-setting]").forEach(el=>{
  el.addEventListener("input",update);
  el.addEventListener("change",update);
 });
-$("resetsettings").onclick=()=>{if(!confirm("Reset all 16 appearance settings to their defaults?"))return;settings={...defaults,rate:settings.rate,generator:settings.generator};persist();applySettings();say("Customization reset",true)};
+$("resetsettings").onclick=()=>{if(!confirm("Reset all appearance settings to defaults?"))return;const keep={rate:settings.rate,generator:settings.generator,amRate:settings.amRate,dtRate:settings.dtRate,amGenerator:settings.amGenerator,dtGenerator:settings.dtGenerator,universalRate:settings.universalRate,universalGenerator:settings.universalGenerator,universalCurrency:settings.universalCurrency};settings={...defaults,...keep};persist();applySettings();syncStudio();say("Appearance reset",true)};
 applySettings();
 
 const getPath=(o,path)=>path.split(".").reduce((v,k)=>v==null?undefined:v[k],o);
